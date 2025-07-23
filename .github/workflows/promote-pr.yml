@@ -1,0 +1,60 @@
+name: Create Promotion PRs
+
+on:
+  push:
+    branches:
+      - dev
+      - qa
+      - uat
+
+jobs:
+  create-promotion-pr:
+    name: Create Promotion Pull Request
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "Promote changes from ${{ github.ref_name }} to ${{ matrix.target }}"
+        title: "Promote changes from ${{ github.ref_name }} to ${{ matrix.target }}"
+        body: |
+          This PR promotes changes from `${{ github.ref_name }}` to `${{ matrix.target }}`
+          
+          **Source Branch:** ${{ github.ref_name }}
+          **Target Branch:** ${{ matrix.target }}
+          
+          Please review the changes before merging.
+        branch: "promote/${{ github.ref_name }}-to-${{ matrix.target }}"
+        base: ${{ matrix.target }}
+    
+    strategy:
+      matrix:
+        include:
+          # When pushing to dev, create PR to qa
+          - source: dev
+            target: qa
+          # When pushing to qa, create PR to uat
+          - source: qa
+            target: uat
+          # When pushing to uat, create PR to master (production)
+          - source: uat
+            target: master
+      
+      # Only run the job that matches the current branch
+      include:
+        - source: dev
+          target: qa
+          if: github.ref_name == 'dev'
+        - source: qa
+          target: uat
+          if: github.ref_name == 'qa'
+        - source: uat
+          target: master
+          if: github.ref_name == 'uat'

@@ -1,0 +1,75 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+      - qa
+      - uat
+      - master
+
+jobs:
+  deploy:
+    name: Deploy to Environment
+    runs-on: ubuntu-latest
+    
+    # Only run when tests pass
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/uat' || github.ref == 'refs/heads/master')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install SSH key
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+    
+    - name: Add known hosts
+      run: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        ssh-keyscan -H ${{ matrix.ssh_host }} >> ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+    
+    - name: Run deployment script
+      env:
+        SSH_HOST: ${{ matrix.ssh_host }}
+        SSH_USER: ${{ matrix.ssh_user }}
+        APP_DIR: ${{ matrix.app_dir }}
+      run: |
+        # Make the deployment script executable
+        chmod +x scripts/deploy-${GITHUB_REF_NAME}.sh
+        
+        # Run the appropriate deployment script
+        ./scripts/deploy-${GITHUB_REF_NAME}.sh
+    
+    strategy:
+      matrix:
+        include:
+          - branch: dev
+            ssh_host: ${{ secrets.DEV_SSH_HOST }}
+            ssh_user: ${{ secrets.DEV_SSH_USER }}
+            app_dir: /var/www/dev.yourdomain.com
+          - branch: qa
+            ssh_host: ${{ secrets.QA_SSH_HOST }}
+            ssh_user: ${{ secrets.QA_SSH_USER }}
+            app_dir: /var/www/qa.yourdomain.com
+          - branch: uat
+            ssh_host: ${{ secrets.UAT_SSH_HOST }}
+            ssh_user: ${{ secrets.UAT_SSH_USER }}
+            app_dir: /var/www/uat.yourdomain.com
+          - branch: master
+            ssh_host: ${{ secrets.PROD_SSH_HOST }}
+            ssh_user: ${{ secrets.PROD_SSH_USER }}
+            app_dir: /var/www/yourdomain.com
+      
+      # Only run the job that matches the current branch
+      max-parallel: 1
+      fail-fast: false
